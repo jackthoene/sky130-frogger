@@ -211,7 +211,8 @@ module tt_um_vga_example (
     end
 
     wire [6:0] frog_lp      = (frog_cx[6:0] + frog_off[6:0]) & 7'h7F;
-    wire       frog_on_obj  = (frog_lp < frog_obs_w);
+    // Generous hitbox: 8px grace on each side of the log
+    wire       frog_on_obj  = (frog_lp < frog_obs_w + 7'd8) || (frog_lp >= 7'd120);
     wire       frog_in_road = (frog_row >= 4'd8)  && (frog_row <= 4'd11);
     wire       frog_in_rivr = (frog_row >= 4'd3)  && (frog_row <= 4'd6);
     wire       frog_at_goal = (frog_row == 4'd2);
@@ -308,11 +309,6 @@ module tt_um_vga_example (
                         snd_die    <= 1'b1;
                     end
                     // Carried off-screen
-                    if (frog_x[9]) begin // wrapped negative
-                        state      <= S_DEAD;
-                        anim_timer <= 6'd40;
-                        snd_die    <= 1'b1;
-                    end
                     if (frog_x > 10'd620) begin
                         state      <= S_DEAD;
                         anim_timer <= 6'd40;
@@ -570,39 +566,66 @@ module tt_um_vga_example (
     assign uo_out[7] = hsync;
 
     // =====================================================================
-    // Audio: PWM beeps for hop / death / goal
+    // Audio: frame-timed SFX — hop blip, death buzz, goal jingle
+    // 20-bit DDS accumulator: f ≈ 25 MHz × freq / 2^20
+    //   freq 11 → ~262 Hz (C4)   freq 14 → ~334 Hz (E4)
+    //   freq 17 → ~405 Hz (G4)   freq 18 → ~429 Hz (A4)
     // =====================================================================
-    reg        audio_out;
-    reg [15:0] snd_timer;
-    reg [7:0]  snd_freq;
-    reg [7:0]  snd_acc;
+    reg         audio_out;
+    reg  [19:0] snd_acc;
+    reg  [7:0]  snd_frames;
+    reg  [1:0]  snd_type;      // 0=none, 1=hop, 2=death, 3=goal
+
+    reg [7:0] cur_freq;
+    always @(*) begin
+        cur_freq = 8'd0;
+        case (snd_type)
+            2'd1: cur_freq = 8'd18;  // hop: A4 blip
+            2'd2: cur_freq = (snd_frames[2]) ? 8'd5 : 8'd7; // death: low warble
+            2'd3: begin
+                // Goal: doo — doo — dooooo (C4 → E4 → G4)
+                if      (snd_frames > 8'd76) cur_freq = 8'd0;
+                else if (snd_frames > 8'd58) cur_freq = 8'd11;  // C4
+                else if (snd_frames > 8'd54) cur_freq = 8'd0;   // gap
+                else if (snd_frames > 8'd36) cur_freq = 8'd14;  // E4
+                else if (snd_frames > 8'd32) cur_freq = 8'd0;   // gap
+                else                         cur_freq = 8'd17;  // G4 held
+            end
+            default: cur_freq = 8'd0;
+        endcase
+    end
 
     always @(posedge clk) begin
         if (~rst_n) begin
-            audio_out <= 1'b0;
-            snd_timer <= 16'd0;
-            snd_freq  <= 8'd0;
-            snd_acc   <= 8'd0;
+            audio_out  <= 1'b0;
+            snd_acc    <= 20'd0;
+            snd_frames <= 8'd0;
+            snd_type   <= 2'd0;
         end else begin
-            // Trigger new sounds (priority: die > goal > hop)
             if (snd_die) begin
-                snd_timer <= 16'd30000;
-                snd_freq  <= 8'd15;       // low buzz
+                snd_frames <= 8'd45;
+                snd_type   <= 2'd2;
             end else if (snd_goal) begin
-                snd_timer <= 16'd20000;
-                snd_freq  <= 8'd80;       // bright chime
+                snd_frames <= 8'd80;
+                snd_type   <= 2'd3;
             end else if (snd_hop) begin
-                snd_timer <= 16'd4000;
-                snd_freq  <= 8'd50;       // quick blip
+                snd_frames <= 8'd5;
+                snd_type   <= 2'd1;
             end
 
-            // PWM output
-            if (snd_timer > 16'd0) begin
-                snd_timer <= snd_timer - 16'd1;
-                snd_acc   <= snd_acc + snd_freq;
-                audio_out <= snd_acc[7];
+            if (frame_tick) begin
+                if (snd_frames > 8'd0)
+                    snd_frames <= snd_frames - 8'd1;
+                else
+                    snd_type <= 2'd0;
+            end
+
+            if (cur_freq != 8'd0) begin
+                snd_acc   <= snd_acc + {12'd0, cur_freq};
+                audio_out <= snd_acc[19];
             end else begin
                 audio_out <= 1'b0;
+                snd_acc   <= 20'd0;
             end
         end
     end
