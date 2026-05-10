@@ -64,18 +64,19 @@ module tt_um_jackthoene_frogger (
     // =====================================================================
     // Gamepad Pmod
     // =====================================================================
-    wire gp_b, gp_y, gp_select, gp_start;
+    wire gp_start;
     wire gp_up, gp_down, gp_left, gp_right;
-    wire gp_a, gp_x, gp_l, gp_r, gp_present;
-
+    wire gp_present;
+    /* verilator lint_off PINCONNECTEMPTY */
     gamepad_pmod_single gamepad (
         .rst_n(rst_n), .clk(clk),
         .pmod_data(ui_in[6]), .pmod_clk(ui_in[5]), .pmod_latch(ui_in[4]),
         .is_present(gp_present),
-        .b(gp_b), .y(gp_y), .select(gp_select), .start(gp_start),
+        .b(), .y(), .select(), .start(gp_start),
         .up(gp_up), .down(gp_down), .left(gp_left), .right(gp_right),
-        .a(gp_a), .x(gp_x), .l(gp_l), .r(gp_r)
+        .a(), .x(), .l(), .r()
     );
+    /* verilator lint_on PINCONNECTEMPTY */
 
     // Merged input (gamepad priority, ui_in fallback)
     wire btn_up    = gp_present ? gp_up    : ui_in[0];
@@ -381,13 +382,9 @@ module tt_um_jackthoene_frogger (
     // Blink frog during death animation
     wire show_frog = in_frog && (state != S_DEAD || anim_timer[2]) && (state != S_OVER);
 
-    // Sub-sprite regions
-    wire feye_l  = (fdx >= 10'd4)  && (fdx < 10'd9)  && (fdy >= 10'd3) && (fdy < 10'd8);
-    wire feye_r  = (fdx >= 10'd15) && (fdx < 10'd20) && (fdy >= 10'd3) && (fdy < 10'd8);
-    wire fpup_l  = (fdx >= 10'd5)  && (fdx < 10'd8)  && (fdy >= 10'd4) && (fdy < 10'd7);
-    wire fpup_r  = (fdx >= 10'd16) && (fdx < 10'd19) && (fdy >= 10'd4) && (fdy < 10'd7);
-    wire fbelly  = (fdx >= 10'd6)  && (fdx < 10'd18) && (fdy >= 10'd10) && (fdy < 10'd20);
-    wire fleg    = ((fdx < 10'd5) || (fdx >= 10'd19)) && (fdy >= 10'd16) && (fdy < 10'd24);
+    // Sub-sprite regions (eye dots, 4×4 each at the top corners)
+    wire feye_l  = (fdx[4:2] == 3'b001) && (fdy[4:2] == 3'b001);
+    wire feye_r  = (fdx[4:2] == 3'b100) && (fdy[4:2] == 3'b001);
 
     // =====================================================================
     // Road decorations
@@ -414,10 +411,9 @@ module tt_um_jackthoene_frogger (
     end
 
     // =====================================================================
-    // Water shimmer
+    // Water shimmer (cheap XOR pattern, no extra register taps)
     // =====================================================================
-    wire [2:0] wphase   = pix_x[2:0] + river0[2:0];
-    wire       sparkle  = (wphase == 3'b000);
+    wire sparkle = &pix_x[2:0] & ~pix_y[1];
 
     // =====================================================================
     // Header: lives (green squares) + score (white bar)
@@ -430,18 +426,18 @@ module tt_um_jackthoene_frogger (
                  && (pix_x >= 10'd48) && (pix_x < 10'd64)  && (lives >= 3'd3);
     wire show_life = life1 | life2 | life3;
 
-    wire [3:0] score_col = pix_x[8:5]; // 0-15
+    // Score bar: 5 cells of 32 px at pix_x in [480, 640)
+    //   pix_x[7:5] over that range walks 7,0,1,2,3 — we use the bottom 3 bits
+    //   and only enable inside the [480,640) window, so the "7" cell is masked.
+    wire [2:0] score_col = pix_x[7:5];
     wire score_bar = is_header && (row_local >= 5'd10) && (row_local < 5'd20)
-                     && (pix_x >= 10'd500) && (score_col < score);
+                     && (pix_x >= 10'd512) && (score_col < score);
 
     // =====================================================================
-    // Game-over / win overlay
+    // Game-over / win overlay (flat band — no border, no checker)
     // =====================================================================
-    wire overlay_zone = (pix_x >= 10'd200) && (pix_x < 10'd440)
-                      && (pix_y >= 10'd200) && (pix_y < 10'd280);
-    wire overlay_border = overlay_zone &&
-                         ((pix_x < 10'd206) || (pix_x >= 10'd434)
-                        ||(pix_y < 10'd206) || (pix_y >= 10'd274));
+    wire overlay_zone = (pix_x[9:6] >= 4'd3) && (pix_x[9:6] < 4'd7)
+                      && (pix_y[9:6] >= 4'd3) && (pix_y[9:6] < 4'd5);
     wire show_overlay = (state == S_OVER || state == S_WIN) && overlay_zone;
 
     // =====================================================================
@@ -458,28 +454,15 @@ module tt_um_jackthoene_frogger (
 
         // --- Overlays (highest priority) ---
         else if (show_overlay) begin
-            if (overlay_border) begin
-                r = (state == S_WIN) ? 2'b11 : 2'b11;
-                g = (state == S_WIN) ? 2'b11 : 2'b00;
-                b = 2'b00;
-            end else begin
-                // checkerboard fill
-                r = (state == S_WIN) ? 2'b01 : 2'b10;
-                g = (state == S_WIN) ? 2'b01 : 2'b00;
-                b = (pix_x[3] ^ pix_y[3]) ? 2'b01 : 2'b00;
-            end
+            r = 2'b11;
+            g = (state == S_WIN) ? 2'b11 : 2'b00;
+            b = 2'b00;
         end
 
         // --- Frog sprite ---
         else if (show_frog) begin
-            if (fpup_l | fpup_r)
-                begin r = 2'b00; g = 2'b00; b = 2'b00; end // black pupil
-            else if (feye_l | feye_r)
+            if (feye_l | feye_r)
                 begin r = 2'b11; g = 2'b11; b = 2'b11; end // white eye
-            else if (fbelly)
-                begin r = 2'b01; g = 2'b11; b = 2'b00; end // light green
-            else if (fleg)
-                begin r = 2'b00; g = 2'b10; b = 2'b00; end // dark green
             else
                 begin r = 2'b00; g = 2'b11; b = 2'b00; end // body green
         end
@@ -495,9 +478,6 @@ module tt_um_jackthoene_frogger (
                     4'd11: begin r = 2'b11; g = 2'b10; b = 2'b00; end // orange
                     default: begin r = 2'b11; g = 2'b11; b = 2'b11; end
                 endcase
-                // Headlight dot (left edge of car)
-                if (pix_lane_pos < 7'd4 && row_local >= 5'd12 && row_local < 5'd20)
-                    begin r = 2'b11; g = 2'b11; b = 2'b11; end
             end else if (road_stripe) begin
                 r = 2'b11; g = 2'b11; b = 2'b00; // dashed yellow line
             end else begin
@@ -508,12 +488,8 @@ module tt_um_jackthoene_frogger (
         // --- River lanes ---
         else if (is_river) begin
             if (pix_has_obj) begin
-                // Log with bark texture
-                r = 2'b10; g = 2'b01; b = 2'b00; // brown
-                if (pix_lane_pos[3:0] == 4'd0)
-                    begin r = 2'b01; g = 2'b01; b = 2'b00; end // bark ring
+                r = 2'b10; g = 2'b01; b = 2'b00; // log brown
             end else begin
-                // Water
                 r = 2'b00;
                 g = sparkle ? 2'b01 : 2'b00;
                 b = sparkle ? 2'b11 : 2'b10;
@@ -569,25 +545,29 @@ module tt_um_jackthoene_frogger (
     //   freq 17 → ~405 Hz (G4)   freq 18 → ~429 Hz (A4)
     // =====================================================================
     reg         audio_out;
-    reg  [19:0] snd_acc;
+    reg  [15:0] snd_acc;
     reg  [6:0]  snd_frames;
     reg  [1:0]  snd_type;      // 0=none, 1=hop, 2=death, 3=goal
 
+    // Goal jingle sliced by snd_frames[5:4]: each segment ~16 frames.
+    // snd_frames starts at 64 and counts down → bits 5:4 walk 3,2,1,0
+    // giving notes C4 → (gap) → E4 → G4.
+    reg [4:0] goal_freq;
+    always @(*) begin
+        case (snd_frames[5:4])
+            2'd3: goal_freq = 5'd11;  // C4
+            2'd2: goal_freq = 5'd0;   // gap
+            2'd1: goal_freq = 5'd14;  // E4
+            default: goal_freq = 5'd17; // G4 held
+        endcase
+    end
+
     reg [4:0] cur_freq;
     always @(*) begin
-        cur_freq = 5'd0;
         case (snd_type)
-            2'd1: cur_freq = 5'd18;  // hop: A4 blip
-            2'd2: cur_freq = (snd_frames[2]) ? 5'd5 : 5'd7; // death: low warble
-            2'd3: begin
-                // Goal: doo — doo — dooooo (C4 → E4 → G4)
-                if      (snd_frames > 7'd76) cur_freq = 5'd0;
-                else if (snd_frames > 7'd58) cur_freq = 5'd11;  // C4
-                else if (snd_frames > 7'd54) cur_freq = 5'd0;   // gap
-                else if (snd_frames > 7'd36) cur_freq = 5'd14;  // E4
-                else if (snd_frames > 7'd32) cur_freq = 5'd0;   // gap
-                else                         cur_freq = 5'd17;  // G4 held
-            end
+            2'd1:    cur_freq = 5'd18;                              // hop A4
+            2'd2:    cur_freq = snd_frames[2] ? 5'd5 : 5'd7;        // death warble
+            2'd3:    cur_freq = goal_freq;
             default: cur_freq = 5'd0;
         endcase
     end
@@ -595,7 +575,7 @@ module tt_um_jackthoene_frogger (
     always @(posedge clk) begin
         if (~rst_n) begin
             audio_out  <= 1'b0;
-            snd_acc    <= 20'd0;
+            snd_acc    <= 16'd0;
             snd_frames <= 7'd0;
             snd_type   <= 2'd0;
         end else begin
@@ -603,7 +583,7 @@ module tt_um_jackthoene_frogger (
                 snd_frames <= 7'd45;
                 snd_type   <= 2'd2;
             end else if (snd_goal) begin
-                snd_frames <= 7'd80;
+                snd_frames <= 7'd63;   // 4 segments × 16 frames
                 snd_type   <= 2'd3;
             end else if (snd_hop) begin
                 snd_frames <= 7'd5;
@@ -611,18 +591,18 @@ module tt_um_jackthoene_frogger (
             end
 
             if (frame_tick) begin
-                if (snd_frames > 7'd0)
+                if (snd_frames != 7'd0)
                     snd_frames <= snd_frames - 7'd1;
                 else
                     snd_type <= 2'd0;
             end
 
             if (cur_freq != 5'd0) begin
-                snd_acc   <= snd_acc + {15'd0, cur_freq};
-                audio_out <= snd_acc[19];
+                snd_acc   <= snd_acc + {11'd0, cur_freq};
+                audio_out <= snd_acc[15];
             end else begin
                 audio_out <= 1'b0;
-                snd_acc   <= 20'd0;
+                snd_acc   <= 16'd0;
             end
         end
     end
