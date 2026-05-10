@@ -111,27 +111,24 @@ module tt_um_jackthoene_frogger (
     // Lane scroll offsets (individual regs — no arrays for max compat)
     //   road0-3 → top_rows 8-11     river0-3 → top_rows 3-6
     // =====================================================================
-    reg [9:0] road0, road1, road2, road3;
-    reg [9:0] river0, river1, river2, river3;
-    reg [9:0] frame_cnt;
+    reg [6:0] road0, road1, road2, road3;
+    reg [6:0] river0, river1, river2, river3;
 
     always @(posedge clk) begin
         if (~rst_n) begin
-            road0 <= 10'd0; road1 <= 10'd0; road2 <= 10'd0; road3 <= 10'd0;
-            river0 <= 10'd0; river1 <= 10'd0; river2 <= 10'd0; river3 <= 10'd0;
-            frame_cnt <= 10'd0;
+            road0 <= 7'd0; road1 <= 7'd0; road2 <= 7'd0; road3 <= 7'd0;
+            river0 <= 7'd0; river1 <= 7'd0; river2 <= 7'd0; river3 <= 7'd0;
         end else if (frame_tick) begin
-            frame_cnt <= frame_cnt + 10'd1;
             // Road:  different speeds & directions
-            road0  <= road0  + 10'd1;   // → slow
-            road1  <= road1  - 10'd2;   // ← medium
-            road2  <= road2  + 10'd3;   // → fast
-            road3  <= road3  - 10'd1;   // ← slow
+            road0  <= road0  + 7'd1;   // → slow
+            road1  <= road1  - 7'd2;   // ← medium
+            road2  <= road2  + 7'd3;   // → fast
+            road3  <= road3  - 7'd1;   // ← slow
             // River: logs drift
-            river0 <= river0 + 10'd1;   // → slow
-            river1 <= river1 - 10'd2;   // ← medium
-            river2 <= river2 + 10'd2;   // → medium
-            river3 <= river3 - 10'd3;   // ← fast
+            river0 <= river0 + 7'd1;   // → slow
+            river1 <= river1 - 7'd2;   // ← medium
+            river2 <= river2 + 7'd2;   // → medium
+            river3 <= river3 - 7'd3;   // ← fast
         end
     end
 
@@ -151,11 +148,11 @@ module tt_um_jackthoene_frogger (
     // Obstacle / log rendering for current pixel
     // Select lane offset, period=128 (mask=7'h7F), varying widths
     // =====================================================================
-    reg [9:0] pix_lane_off;
+    reg [6:0] pix_lane_off;
     reg [6:0] pix_obs_w;
 
     always @(*) begin
-        pix_lane_off = 10'd0;
+        pix_lane_off = 7'd0;
         pix_obs_w    = 7'd0;
         case (top_row)
             4'd8:  begin pix_lane_off = road0;  pix_obs_w = 7'd40; end
@@ -170,7 +167,7 @@ module tt_um_jackthoene_frogger (
         endcase
     end
 
-    wire [6:0] pix_lane_pos = (pix_x[6:0] + pix_lane_off[6:0]) & 7'h7F;
+    wire [6:0] pix_lane_pos = pix_x[6:0] + pix_lane_off;
     wire       pix_has_obj  = (pix_lane_pos < pix_obs_w);
 
     // =====================================================================
@@ -191,11 +188,11 @@ module tt_um_jackthoene_frogger (
     wire [9:0] frog_cx = frog_x + 10'd12;
 
     // Collision: which lane is the frog in?
-    reg  [9:0] frog_off;
+    reg  [6:0] frog_off;
     reg  [6:0] frog_obs_w;
 
     always @(*) begin
-        frog_off   = 10'd0;
+        frog_off   = 7'd0;
         frog_obs_w = 7'd0;
         case (frog_row)
             4'd8:  begin frog_off = road0;  frog_obs_w = 7'd40; end
@@ -210,7 +207,7 @@ module tt_um_jackthoene_frogger (
         endcase
     end
 
-    wire [6:0] frog_lp      = (frog_cx[6:0] + frog_off[6:0]) & 7'h7F;
+    wire [6:0] frog_lp      = frog_cx[6:0] + frog_off;
     // Generous hitbox: 8px grace on each side of the log
     wire       frog_on_obj  = (frog_lp < frog_obs_w + 7'd8) || (frog_lp >= 7'd120);
     wire       frog_in_road = (frog_row >= 4'd8)  && (frog_row <= 4'd11);
@@ -419,8 +416,8 @@ module tt_um_jackthoene_frogger (
     // =====================================================================
     // Water shimmer
     // =====================================================================
-    wire [7:0] wphase   = pix_x[7:0] + {pix_y[4:0], 3'b0} + river0[7:0];
-    wire       sparkle  = (wphase[2:0] == 3'b000);
+    wire [2:0] wphase   = pix_x[2:0] + river0[2:0];
+    wire       sparkle  = (wphase == 3'b000);
 
     // =====================================================================
     // Header: lives (green squares) + score (white bar)
