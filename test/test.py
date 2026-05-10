@@ -22,10 +22,11 @@ async def test_reset_and_vga_runs(dut):
     await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
 
-    # uio is fully unused; oe must be all-input.
+    # uio[7] drives audio out; uio[6:0] are unused inputs.
     await ClockCycles(dut.clk, 1)
-    assert dut.uio_oe.value == 0, f"uio_oe should be 0, got {int(dut.uio_oe.value):#04x}"
-    assert dut.uio_out.value == 0, f"uio_out should be 0, got {int(dut.uio_out.value):#04x}"
+    assert dut.uio_oe.value == 0x80, f"uio_oe should be 0x80, got {int(dut.uio_oe.value):#04x}"
+    assert (int(dut.uio_out.value) & 0x7F) == 0, \
+        f"uio_out[6:0] should be 0, got {int(dut.uio_out.value):#04x}"
 
     # Watch one full frame (~420k pixel-clocks for 800x525 timing).
     # Verify hsync (uo_out[7]) and vsync (uo_out[3]) both transition.
