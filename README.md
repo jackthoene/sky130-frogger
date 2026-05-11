@@ -12,10 +12,10 @@ Guide your frog from the bottom grass to the goal zone at the top. Dodge cars, r
 
 | Rows | Zone | What's there |
 |------|------|--------------|
-| 12–14 | Start | Safe grass — you spawn here |
-| 8–11 | Road | 4 lanes of colored cars at different speeds |
-| 7 | Median | Safe grass rest stop |
-| 3–6 | River | 4 lanes of logs on water — ride them or drown |
+| 10–14 | Start | Safe grass — you spawn here |
+| 7–9 | Road | 3 lanes of colored cars at different speeds |
+| 6 | Median | Safe grass rest stop |
+| 3–5 | River | 3 lanes of logs on water — ride them or drown |
 | 2 | Goal | 5 lily-pad slots to fill |
 | 0–1 | Header | Lives (green squares) and score bar |
 
@@ -58,13 +58,13 @@ Open [vga-playground.com/?preset=gamepad](https://vga-playground.com/?preset=gam
 
 ## Audio
 
-Sound effects via PWM on the [TT Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) (`uio[7]`). Uses a 20-bit DDS (direct digital synthesis) accumulator for clean audible tones.
+Sound effects via PWM on the [TT Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) (`uio[7]`). A 16-bit DDS (direct digital synthesis) phase accumulator drives a 1-bit square-wave output.
 
-| Event | Sound | Frequency | Duration |
-|-------|-------|-----------|----------|
-| Hop | Short blip | A4 (~430 Hz) | ~83 ms |
-| Death | Low warble | Alternates ~120/167 Hz | ~750 ms |
-| Goal | Ascending jingle | C4 → E4 → G4 | ~1.3 s |
+| Event | Sound | Duration |
+|-------|-------|----------|
+| Hop | Short high blip | ~83 ms |
+| Death | Two-tone warble | ~750 ms |
+| Goal | Ascending three-note jingle | ~1.0 s |
 
 The goal jingle has articulation gaps between notes for a clean *doo — doo — dooooo* feel.
 
@@ -124,12 +124,13 @@ Everything is designed to fit in a single Tiny Tapeout tile:
 
 | Block | Flip-flops (approx) | Description |
 |-------|---------------------|-------------|
-| Lane offsets | 80 | 8 × 10-bit scroll counters (4 road + 4 river) |
+| Lane offsets | 42 | 6 × 7-bit scroll counters (3 road + 3 river) |
 | Frog state | 17 | x position (10b) + row (4b) + lives (3b) |
-| Game state | 17 | state (2b) + score (4b) + anim_timer (6b) + goal_slots (5b) |
-| Audio | 30 | DDS accumulator (20b) + frames (8b) + type (2b) |
-| Edge detect | 8 | Button history (4b) + vsync history (1b) + misc |
-| **Total** | **~152** | Well within single-tile budget |
+| Game state | 16 | state (2b) + score (3b) + anim_timer (6b) + goal_slots (5b) |
+| Audio | 26 | DDS accumulator (16b) + frames (7b) + type (2b) + out (1b) |
+| Edge detect | 5 | Button history (4b) + vsync history (1b) |
+| Gamepad PMOD | ~80 | Shift register + data latch + sync + decode |
+| **Total** | **~190** | Fits a single-tile budget (≈90% util after lane trim) |
 
 ### Collision Detection
 
@@ -140,18 +141,16 @@ Everything is designed to fit in a single Tiny Tapeout tile:
 
 ### Lane Configuration
 
-Each lane uses period-128 obstacle patterns (`pix_x + offset) & 7'h7F`):
+Each lane uses period-128 obstacle patterns (`pix_x + offset` masked to 7 bits):
 
 | Row | Type | Direction | Speed (px/frame) | Obstacle width | Color |
 |-----|------|-----------|-------------------|----------------|-------|
-| 8 | Road | → | 1 | 40 | Red |
-| 9 | Road | ← | 2 | 32 | Yellow |
-| 10 | Road | → | 3 | 28 | Purple |
-| 11 | Road | ← | 1 | 48 | Orange |
+| 7 | Road | → | 1 | 40 | Red |
+| 8 | Road | ← | 2 | 32 | Yellow |
+| 9 | Road | → | 3 | 28 | Purple |
 | 3 | River | ← | 1 | 60 | Brown log |
 | 4 | River | → | 2 | 50 | Brown log |
 | 5 | River | ← | 2 | 64 | Brown log |
-| 6 | River | → | 3 | 44 | Brown log |
 
 ### File Structure
 

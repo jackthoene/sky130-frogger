@@ -532,7 +532,7 @@ module tt_um_jackthoene_frogger (
 
     // =====================================================================
     // Audio: frame-timed SFX — hop blip, death buzz, goal jingle
-    // 20-bit DDS accumulator: f ≈ 25 MHz × freq / 2^20
+    // 16-bit DDS accumulator: f ≈ 25 MHz × freq / 2^16
     //   freq 11 → ~262 Hz (C4)   freq 14 → ~334 Hz (E4)
     //   freq 17 → ~405 Hz (G4)   freq 18 → ~429 Hz (A4)
     // =====================================================================
