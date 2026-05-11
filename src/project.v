@@ -22,10 +22,10 @@
  * Layout (15 rows × 32 pixels = 480):
  *   Row 0-1 : Score / lives header
  *   Row 2   : Goal zone (5 lily-pad slots)
- *   Row 3-6 : River lanes (logs on water)
- *   Row 7   : Safe median (grass)
- *   Row 8-11: Road lanes (cars)
- *   Row 12-14: Start area (grass)
+ *   Row 3-5 : River lanes (logs on water)
+ *   Row 6   : Safe median (grass)
+ *   Row 7-9 : Road lanes (cars)
+ *   Row 10-14: Start area (grass)
  *
  * No multipliers. No dividers. No RAM. Pure combinational frog.
  * SPDX-License-Identifier: Apache-2.0
@@ -110,26 +110,24 @@ module tt_um_jackthoene_frogger (
 
     // =====================================================================
     // Lane scroll offsets (individual regs — no arrays for max compat)
-    //   road0-3 → top_rows 8-11     river0-3 → top_rows 3-6
+    //   road0-2 → top_rows 7-9     river0-2 → top_rows 3-5
     // =====================================================================
-    reg [6:0] road0, road1, road2, road3;
-    reg [6:0] river0, river1, river2, river3;
+    reg [6:0] road0, road1, road2;
+    reg [6:0] river0, river1, river2;
 
     always @(posedge clk) begin
         if (~rst_n) begin
-            road0 <= 7'd0; road1 <= 7'd0; road2 <= 7'd0; road3 <= 7'd0;
-            river0 <= 7'd0; river1 <= 7'd0; river2 <= 7'd0; river3 <= 7'd0;
+            road0 <= 7'd0; road1 <= 7'd0; road2 <= 7'd0;
+            river0 <= 7'd0; river1 <= 7'd0; river2 <= 7'd0;
         end else if (frame_tick) begin
             // Road:  different speeds & directions
             road0  <= road0  + 7'd1;   // → slow
             road1  <= road1  - 7'd2;   // ← medium
             road2  <= road2  + 7'd3;   // → fast
-            road3  <= road3  - 7'd1;   // ← slow
             // River: logs drift
             river0 <= river0 + 7'd1;   // → slow
             river1 <= river1 - 7'd2;   // ← medium
             river2 <= river2 + 7'd2;   // → medium
-            river3 <= river3 - 7'd3;   // ← fast
         end
     end
 
@@ -140,10 +138,10 @@ module tt_um_jackthoene_frogger (
     wire [4:0] row_local  = pix_y[4:0];       // 0-31 within row
     wire       is_header  = (top_row <= 4'd1);
     wire       is_goal    = (top_row == 4'd2);
-    wire       is_river   = (top_row >= 4'd3) && (top_row <= 4'd6);
-    wire       is_median  = (top_row == 4'd7);
-    wire       is_road    = (top_row >= 4'd8) && (top_row <= 4'd11);
-    wire       is_grass   = (top_row >= 4'd12);
+    wire       is_river   = (top_row >= 4'd3) && (top_row <= 4'd5);
+    wire       is_median  = (top_row == 4'd6);
+    wire       is_road    = (top_row >= 4'd7) && (top_row <= 4'd9);
+    wire       is_grass   = (top_row >= 4'd10);
 
     // =====================================================================
     // Obstacle / log rendering for current pixel
@@ -156,14 +154,12 @@ module tt_um_jackthoene_frogger (
         pix_lane_off = 7'd0;
         pix_obs_w    = 7'd0;
         case (top_row)
-            4'd8:  begin pix_lane_off = road0;  pix_obs_w = 7'd40; end
-            4'd9:  begin pix_lane_off = road1;  pix_obs_w = 7'd32; end
-            4'd10: begin pix_lane_off = road2;  pix_obs_w = 7'd28; end
-            4'd11: begin pix_lane_off = road3;  pix_obs_w = 7'd48; end
+            4'd7:  begin pix_lane_off = road0;  pix_obs_w = 7'd40; end
+            4'd8:  begin pix_lane_off = road1;  pix_obs_w = 7'd32; end
+            4'd9:  begin pix_lane_off = road2;  pix_obs_w = 7'd28; end
             4'd3:  begin pix_lane_off = river0; pix_obs_w = 7'd60; end
             4'd4:  begin pix_lane_off = river1; pix_obs_w = 7'd50; end
             4'd5:  begin pix_lane_off = river2; pix_obs_w = 7'd64; end
-            4'd6:  begin pix_lane_off = river3; pix_obs_w = 7'd44; end
             default: ;
         endcase
     end
@@ -196,14 +192,12 @@ module tt_um_jackthoene_frogger (
         frog_off   = 7'd0;
         frog_obs_w = 7'd0;
         case (frog_row)
-            4'd8:  begin frog_off = road0;  frog_obs_w = 7'd40; end
-            4'd9:  begin frog_off = road1;  frog_obs_w = 7'd32; end
-            4'd10: begin frog_off = road2;  frog_obs_w = 7'd28; end
-            4'd11: begin frog_off = road3;  frog_obs_w = 7'd48; end
+            4'd7:  begin frog_off = road0;  frog_obs_w = 7'd40; end
+            4'd8:  begin frog_off = road1;  frog_obs_w = 7'd32; end
+            4'd9:  begin frog_off = road2;  frog_obs_w = 7'd28; end
             4'd3:  begin frog_off = river0; frog_obs_w = 7'd60; end
             4'd4:  begin frog_off = river1; frog_obs_w = 7'd50; end
             4'd5:  begin frog_off = river2; frog_obs_w = 7'd64; end
-            4'd6:  begin frog_off = river3; frog_obs_w = 7'd44; end
             default: ;
         endcase
     end
@@ -211,8 +205,8 @@ module tt_um_jackthoene_frogger (
     wire [6:0] frog_lp      = frog_cx[6:0] + frog_off;
     // Generous hitbox: 8px grace on each side of the log
     wire       frog_on_obj  = (frog_lp < frog_obs_w + 7'd8) || (frog_lp >= 7'd120);
-    wire       frog_in_road = (frog_row >= 4'd8)  && (frog_row <= 4'd11);
-    wire       frog_in_rivr = (frog_row >= 4'd3)  && (frog_row <= 4'd6);
+    wire       frog_in_road = (frog_row >= 4'd7)  && (frog_row <= 4'd9);
+    wire       frog_in_rivr = (frog_row >= 4'd3)  && (frog_row <= 4'd5);
     wire       frog_at_goal = (frog_row == 4'd2);
 
     // River carry speed (signed, per lane)
@@ -223,7 +217,6 @@ module tt_um_jackthoene_frogger (
             4'd3: carry_spd = -4'sd1;  // river0 offset += 1 → logs drift left
             4'd4: carry_spd =  4'sd2;  // river1 offset -= 2 → logs drift right
             4'd5: carry_spd = -4'sd2;  // river2 offset += 2 → logs drift left
-            4'd6: carry_spd =  4'sd3;  // river3 offset -= 3 → logs drift right
             default: carry_spd = 4'sd0;
         endcase
     end
@@ -472,10 +465,9 @@ module tt_um_jackthoene_frogger (
             if (pix_has_obj) begin
                 // Car colors per lane
                 case (top_row)
-                    4'd8:  begin r = 2'b11; g = 2'b00; b = 2'b00; end // red
-                    4'd9:  begin r = 2'b11; g = 2'b11; b = 2'b00; end // yellow
-                    4'd10: begin r = 2'b10; g = 2'b00; b = 2'b11; end // purple
-                    4'd11: begin r = 2'b11; g = 2'b10; b = 2'b00; end // orange
+                    4'd7:  begin r = 2'b11; g = 2'b00; b = 2'b00; end // red
+                    4'd8:  begin r = 2'b11; g = 2'b11; b = 2'b00; end // yellow
+                    4'd9:  begin r = 2'b10; g = 2'b00; b = 2'b11; end // purple
                     default: begin r = 2'b11; g = 2'b11; b = 2'b11; end
                 endcase
             end else if (road_stripe) begin
